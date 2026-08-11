@@ -1,0 +1,22 @@
+[package]
+name = "cni-config"
+version = "0.1.0"
+edition = "2024"
+authors = ["Evgeniy Slizevich <evgeniy@slizevich.net>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/slipmesh/cni-config"
+description = "Watches this node's own Node.spec.podCIDRs and writes a bridge/host-local CNI conflist for it - the one piece of pod networking that's downstream of Kubernetes already being up, so unlike talos-extensions' router/awg/nftables it's a plain Kubernetes DaemonSet, not a Talos extension"
+
+[[bin]]
+name = "cni-config"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+futures = "0.3.33"
+k8s-openapi = { version = "0.28.0", features = ["v1_36"] }
+kube = { version = "4.2.0", default-features = false, features = ["client", "rustls-tls", "aws-lc-rs", "runtime"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

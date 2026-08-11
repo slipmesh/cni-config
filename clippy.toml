@@ -1,0 +1,5 @@
+# Clippy linting configuration for cni-config
+# Only non-default options
+
+too-many-arguments-threshold = 8
+cognitive-complexity-threshold = 50

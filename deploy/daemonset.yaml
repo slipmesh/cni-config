@@ -1,0 +1,81 @@
+# Deployed via Talos's own `cluster.network.cni: {name: custom, urls: [...]}` (the same mechanism
+# used to deploy Cilium/Calico) - applied once at bootstrap via kube-apiserver, same as any other
+# `kubectl apply -f`. Image tag is pinned per release; bump it here when cutting a new one.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cni-config
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cni-config
+rules:
+  # Only its own Node is ever fetched (the watch is server-side field-selected on metadata.name),
+  # but RBAC itself can't scope get/watch/list to "just the caller's own object" - the field
+  # selector is what actually narrows it down.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cni-config
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cni-config
+subjects:
+  - kind: ServiceAccount
+    name: cni-config
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cni-config
+  namespace: kube-system
+  labels:
+    app: cni-config
+spec:
+  selector:
+    matchLabels:
+      app: cni-config
+  template:
+    metadata:
+      labels:
+        app: cni-config
+    spec:
+      serviceAccountName: cni-config
+      # Runs before/independent of any CNI being up yet - hostNetwork so this pod itself doesn't
+      # need pod networking to reach the API server.
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+      priorityClassName: system-node-critical
+      containers:
+        - name: cni-config
+          image: ghcr.io/slipmesh/cni-config:latest
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: RUST_LOG
+              value: info
+          volumeMounts:
+            - name: cni-net-d
+              mountPath: /etc/cni/net.d
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+      volumes:
+        - name: cni-net-d
+          hostPath:
+            path: /etc/cni/net.d
+            type: DirectoryOrCreate

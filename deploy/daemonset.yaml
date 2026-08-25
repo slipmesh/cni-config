@@ -69,7 +69,7 @@ spec:
       priorityClassName: system-node-critical
       containers:
         - name: cni-config
-          image: ghcr.io/slipmesh/cni-config:v0.1.0
+          image: ghcr.io/slipmesh/cni-config:v0.1.1
           env:
             - name: NODE_NAME
               valueFrom:

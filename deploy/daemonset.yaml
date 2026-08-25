@@ -1,6 +1,18 @@
-# Deployed via Talos's own `cluster.network.cni: {name: custom, urls: [...]}` (the same mechanism
-# used to deploy Cilium/Calico) - applied once at bootstrap via kube-apiserver, same as any other
-# `kubectl apply -f`. Image tag is pinned per release; bump it here when cutting a new one.
+# The deployable manifest for this DaemonSet, attached to every GitHub Release as an asset.
+#
+# The image carries the last released tag, never `:latest`. This DaemonSet writes the CNI conflist
+# that decides how every pod on the node gets networking, so a floating tag here means a node
+# reboot can pull a different one than its neighbours are running - the reason IaC/k8s/main's own
+# `cni-config` component patches this to a digest on top.
+#
+# Release CI rewrites whatever tag is here to the release's own before attaching the asset (see
+# .github/workflows/release.yml), so forgetting to bump this line cannot produce an asset pointing
+# at the wrong image - the bump keeps the in-repo copy honest, CI keeps the released one correct.
+#
+# This cluster no longer installs it through Talos: `cluster.network.cni` is `none` and the
+# DaemonSet is owned by Argo (IaC/k8s/main's `cni-config` component), which pins it further by
+# digest. The Talos `cni: {name: custom, urls: [...]}` route still works and is what the release
+# asset exists for.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -57,7 +69,7 @@ spec:
       priorityClassName: system-node-critical
       containers:
         - name: cni-config
-          image: ghcr.io/slipmesh/cni-config:latest
+          image: ghcr.io/slipmesh/cni-config:v0.1.0
           env:
             - name: NODE_NAME
               valueFrom:

@@ -120,6 +120,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Substitutes whatever tag the in-repo manifest carries, not just a specific one: the point
+      # is that an asset can never advertise an image other than its own release, even if the
+      # in-repo bump was forgotten. The merge job above pushed this exact version tag alongside
+      # `latest`, so the substituted tag always resolves.
+      - name: Pin the manifest's image to this release's tag
+        run: |
+          sed -i "s|\(image: ghcr.io/slipmesh/cni-config\):[^[:space:]]*|\1:${{ github.ref_name }}|" \
+            deploy/daemonset.yaml
+          grep -n 'image:' deploy/daemonset.yaml
+          grep -q "cni-config:${{ github.ref_name }}" deploy/daemonset.yaml
+
       - name: Create GitHub Release with the DaemonSet manifest attached
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,5 @@
 //! Renders the bridge/host-local/loopback CNI conflist for this node's own pod-bridge network.
-//! Ported from `operators/router/src/bird.rs::render_cni_conflist` (github.com/slipmesh/operators),
+//! Ported from `operators/router/src/bird.rs::render_cni_conflist`,
 //! generalized from one IPv4 CIDR to an arbitrary set - exactly what `Node.spec.podCIDRs` can
 //! actually contain (one entry on today's IPv4-only cluster, two once/if dual-stack `podSubnets`
 //! is ever turned on) - so this binary doesn't need rewriting when that happens.

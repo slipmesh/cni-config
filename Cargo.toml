@@ -2,7 +2,7 @@
 name = "cni-config"
 version = "0.1.0"
 edition = "2024"
-authors = ["Evgeniy Slizevich <evgeniy@slizevich.net>"]
+authors = ["slipmesh"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/slipmesh/cni-config"
 description = "Watches this node's own Node.spec.podCIDRs and writes a bridge/host-local CNI conflist for it - the one piece of pod networking that's downstream of Kubernetes already being up, so unlike talos-extensions' router/awg/nftables it's a plain Kubernetes DaemonSet, not a Talos extension"

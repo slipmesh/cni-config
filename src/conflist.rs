@@ -5,9 +5,10 @@
 //! is ever turned on) - so this binary doesn't need rewriting when that happens.
 //!
 //! `bridge`/`host-local`/`loopback` are already present in `/opt/cni/bin` on every Talos node
-//! (confirmed directly against Talos's own build Dockerfile), so the conflist is the only piece
-//! this binary produces. `ipMasq: false` because inter-pod/inter-node traffic is routed (via the
-//! `direct_cni` BIRD protocol block in `talos-extensions/router` + the mesh), never NAT'd -
+//! (per Talos's own build Dockerfile), so the conflist is the only piece this binary produces.
+//! `ipMasq: false` because inter-pod/inter-node traffic is routed - the `router` extension
+//! announces this node's podCIDR over the mesh by matching the kernel routing table against a
+//! configured prefix - and never NAT'd:
 //! masquerading is nftables' job, only for external traffic. `mtu: 1420` matches the AmneziaWG mesh
 //! interfaces' MTU, since cross-node pod traffic transits them; a default 1500 would silently
 //! blackhole on PMTU. No explicit `ipam.routes` entry for `0.0.0.0/0`: `isDefaultGateway: true`

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2026-10-01
+
+### Build system 🛠️
+
+- Stop tracking Cargo.lock
+- Take the latest releases
+
+### Documentation 📚
+
+- Have the release commit move the manifest's image tag too
+
+### Fixed 🐛
+
+- Log the binary's own name and version at start
+- Carry the released version in Cargo.toml
+
 ## [0.1.3] - 2026-08-27
 
 ### Miscellaneous 🧹

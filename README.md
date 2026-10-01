@@ -46,11 +46,13 @@ always deploys exactly one, immutable version.
 
 ## Release
 
-Push a `vX.Y.Z` tag. CI (`.github/workflows/release.yml`) cross-compiles for amd64+arm64, pushes a
-multi-arch image to `ghcr.io/slipmesh/cni-config:vX.Y.Z` (and `:latest`), rewrites
-`deploy/daemonset.yaml`'s image reference to the tag being released, and creates a GitHub Release
-with that manifest attached as a downloadable asset - that release-asset URL is what
-`cluster.network.cni.urls` points at.
+The release commit, `chore: release vX.Y.Z`, sets `version` in `Cargo.toml` to the same number and
+regenerates `CHANGELOG.md` with git-cliff: the binary reports that version in its first log line,
+and a tag that moves alone leaves it misnaming itself. Then push a `vX.Y.Z` tag. CI
+(`.github/workflows/release.yml`) cross-compiles for amd64+arm64, pushes a multi-arch image to
+`ghcr.io/slipmesh/cni-config:vX.Y.Z` (and `:latest`), rewrites `deploy/daemonset.yaml`'s image
+reference to the tag being released, and creates a GitHub Release with that manifest attached as a
+downloadable asset - that release-asset URL is what `cluster.network.cni.urls` points at.
 
 ## Local development
 

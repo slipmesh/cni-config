@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
         .without_time()
         .with_ansi(false)
         .init();
+    tracing::info!("{} {}", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"));
 
     let node_name =
         std::env::var("NODE_NAME").context("NODE_NAME env var must be set (downward API)")?;

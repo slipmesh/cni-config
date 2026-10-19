@@ -10,6 +10,7 @@
 //! that invariant holding forever (a manually edited/recreated Node could still change it).
 
 mod conflist;
+mod memstats;
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
@@ -18,6 +19,10 @@ use kube::runtime::{WatchStreamExt, watcher};
 use kube::{Api, Client, ResourceExt};
 
 const CONFLIST_PATH: &str = "/etc/cni/net.d/10-bridge.conflist";
+const MEMORY_REPORT_PERIOD: std::time::Duration = std::time::Duration::from_secs(600);
+
+#[global_allocator]
+static ALLOCATOR: memstats::CountingAllocator = memstats::CountingAllocator;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,6 +36,7 @@ async fn main() -> Result<()> {
     let node_name =
         std::env::var("NODE_NAME").context("NODE_NAME env var must be set (downward API)")?;
     tracing::info!(node_name, "starting cni-config");
+    tokio::spawn(memstats::report_every(MEMORY_REPORT_PERIOD));
 
     let client = Client::try_default()
         .await
@@ -43,10 +49,12 @@ async fn main() -> Result<()> {
 
     let mut last_written: Option<Vec<String>> = None;
     while let Some(event) = stream.next().await {
+        memstats::WATCH_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let node = match event {
             Ok(watcher::Event::Apply(node)) => node,
             Ok(_) => continue,
             Err(e) => {
+                memstats::WATCH_ERRORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 tracing::warn!(error = %e, "watch stream error, retrying");
                 continue;
             }

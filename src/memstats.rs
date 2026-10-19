@@ -1,6 +1,7 @@
 //! A periodic memory report: the live heap as counted at the allocator, next to the kernel's
 //! view of the resident set. The two together tell a slow growth apart - a heap that grows is
 //! memory the code keeps, a flat heap under a growing `RssAnon` is memory the allocator keeps.
+//! Logged at debug level, so it stays quiet unless `RUST_LOG` names this module.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -70,7 +71,7 @@ pub async fn report_every(period: Duration) {
             .ok()
             .as_deref()
             .and_then(parse_status);
-        tracing::info!(
+        tracing::debug!(
             heap_live_bytes = LIVE_HEAP.load(Ordering::Relaxed),
             rss_anon_kib = rss.as_ref().map(|r| r.anon_kib),
             rss_file_kib = rss.as_ref().map(|r| r.file_kib),

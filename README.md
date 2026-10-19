@@ -44,6 +44,14 @@ manifest instead.
 Each release's `daemonset.yaml` asset pins the image to that same release tag, so a given URL
 always deploys exactly one, immutable version.
 
+## Memory report
+
+Every ten minutes the binary logs a `memory` line at debug level: the live heap as counted at the
+allocator, `RssAnon` and `RssFile` from `/proc/self/status`, and the Node watch events and errors
+seen since start. A heap that grows is memory the code keeps; a flat heap under a growing
+`RssAnon` is memory the allocator keeps. It is off by default; to turn it on without the rest of
+the debug output, set the container's `RUST_LOG` to `info,cni_config::memstats=debug`.
+
 ## Release
 
 The release commit, `chore: release vX.Y.Z`, sets `version` in `Cargo.toml` and the image tag in

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.5] - 2026-10-19
+
+### Added ✨
+
+- Log the live heap and resident set every ten minutes
+- Keep the memory report at debug level
+
 ## [0.1.4] - 2026-10-01
 
 ### Build system 🛠️

@@ -1,9 +1,8 @@
-# Packaging only - expects the binary already cross-compiled locally/in CI via:
-#   cargo zigbuild --release --target x86_64-unknown-linux-musl -p cni-config
-# (native cross-compilation via `cargo-zigbuild`/zig cc, not a `cargo build` inside this
-# Dockerfile - a full rustc build segfaults under QEMU emulation for a non-native --platform).
-# CI additionally builds each arch on a runner of that architecture, so nothing here is
-# emulated at all.
+# Packaging only - expects the binary already built for the image's arch and staged at
+# target/<TARGETARCH>/release/cni-config, as CI does after
+#   cargo build --release --target <arch>-unknown-linux-musl
+# on a runner of that architecture. Not a `cargo build` inside this Dockerfile: a full rustc
+# build segfaults under QEMU emulation for a non-native --platform.
 #
 # kube's rustls-based client reads CA certs straight from the filesystem (no compiled-in fallback
 # bundle) to verify the in-cluster API server's TLS cert, so a bare `FROM scratch` with nothing at

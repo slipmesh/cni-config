@@ -4,10 +4,12 @@
 # asset - that release-asset URL is what `cluster.network.cni.urls` in Talos machine config points
 # at (a plain HTTP GET on raw YAML, not an OCI pull).
 #
-# Nothing is emulated. The binary is cross-compiled with cargo-zigbuild (a true cross-compiler),
-# and each arch's image is built on a runner of that architecture - ubuntu-24.04-arm for arm64,
-# free for public repositories - so the `certs` stage's own `apk add` runs natively too. Same
-# build-by-digest-then-merge shape the other repositories use.
+# Nothing is emulated or cross-compiled. Each arch builds on a runner of that architecture -
+# ubuntu-24.04-arm for arm64, free for public repositories - with a plain `cargo build` for its
+# musl target, so the binary is the one a local `cargo build --target <arch>-unknown-linux-musl`
+# produces, and the `certs` stage's own `apk add` runs natively too. musl-tools supplies the
+# `musl-gcc` that aws-lc-sys builds its C part with. Same build-by-digest-then-merge shape the
+# other repositories use.
 name: Release image
 
 on:
@@ -38,6 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install the musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
@@ -46,13 +51,8 @@ jobs:
         with:
           key: ${{ matrix.rust_target }}
 
-      - uses: mlugg/setup-zig@v2
-
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild --locked
-
-      - name: Cross-compile
-        run: cargo zigbuild --release --target ${{ matrix.rust_target }}
+      - name: Build
+        run: cargo build --release --target ${{ matrix.rust_target }}
 
       - name: Stage binary at its TARGETARCH path
         run: |

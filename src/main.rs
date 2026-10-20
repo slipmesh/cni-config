@@ -43,6 +43,32 @@ async fn main() -> Result<()> {
         .context("failed to build in-cluster Kubernetes client")?;
     let nodes: Api<Node> = Api::all(client);
 
+    tokio::select! {
+        result = keep_conflist_current(nodes, &node_name) => result,
+        result = terminated() => {
+            tracing::info!("SIGTERM received, exiting");
+            result
+        }
+    }
+}
+
+/// Resolves when the pod is asked to stop. As PID 1 in its container the process has no default
+/// handler for SIGTERM, so without this it would only go when the grace period runs out and the
+/// kubelet sends SIGKILL.
+async fn terminated() -> Result<()> {
+    #[cfg(unix)]
+    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .context("failed to install the SIGTERM handler")?
+        .recv()
+        .await;
+    #[cfg(not(unix))]
+    tokio::signal::ctrl_c().await?;
+    Ok(())
+}
+
+/// Watches this node's own `Node` object and rewrites the conflist whenever `spec.podCIDRs`
+/// differs from what was last written.
+async fn keep_conflist_current(nodes: Api<Node>, node_name: &str) -> Result<()> {
     let config = watcher::Config::default().fields(&format!("metadata.name={node_name}"));
     let stream = watcher(nodes, config).default_backoff();
     let mut stream = std::pin::pin!(stream);
@@ -69,7 +95,7 @@ async fn main() -> Result<()> {
         }
 
         match conflist::render_conflist(&pod_cidrs) {
-            Ok(rendered) => match std::fs::write(CONFLIST_PATH, &rendered) {
+            Ok(rendered) => match write_conflist(&rendered) {
                 Ok(()) => {
                     tracing::info!(?pod_cidrs, path = CONFLIST_PATH, "CNI conflist written");
                     last_written = Some(pod_cidrs);
@@ -83,4 +109,14 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Replaces the conflist through a temporary file in the same directory, so a kill mid-write
+/// leaves the previous file whole rather than a truncated one the CRI would fail to parse. The
+/// temporary file is named `.10-bridge.conflist.<random>`, which the CRI's loader skips.
+fn write_conflist(rendered: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = atomic_write_file::AtomicWriteFile::open(CONFLIST_PATH)?;
+    file.write_all(rendered.as_bytes())?;
+    file.commit()
 }

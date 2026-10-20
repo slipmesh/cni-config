@@ -57,9 +57,11 @@ the debug output, set the container's `RUST_LOG` to `info,cni_config::memstats=d
 The release commit, `chore: release vX.Y.Z`, sets `version` in `Cargo.toml` and the image tag in
 `deploy/daemonset.yaml` to the same number and regenerates `CHANGELOG.md` with git-cliff: the binary
 reports that version in its first log line, and a tag that moves alone leaves it misnaming itself.
-Then push a `vX.Y.Z` tag. CI (`.github/workflows/release.yml`) cross-compiles for amd64+arm64,
-pushes a multi-arch image to `ghcr.io/slipmesh/cni-config:vX.Y.Z` (and `:latest`), rewrites
-`deploy/daemonset.yaml`'s image reference to the tag being released, and creates a GitHub Release
+Then push a `vX.Y.Z` tag on the release merge commit. CI (`.github/workflows/ci.yml`) builds
+nothing for it: every push to `main` already built, tested and pushed a multi-arch image as
+`ghcr.io/slipmesh/cni-config:sha-<commit>`, and the tag retags that image as `:vX.Y.Z` (and
+`:latest`), so the release is the exact image `main` tested. It then rewrites
+`deploy/daemonset.yaml`'s image reference to the tag being released and creates a GitHub Release
 with that manifest attached as a downloadable asset - that release-asset URL is what
 `cluster.network.cni.urls` points at.
 
@@ -70,6 +72,10 @@ cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 ```
+
+CI runs clippy and the tests against the musl target the image ships, on each arch's own runner:
+`cargo test --target <arch>-unknown-linux-musl` locally needs the `musl-gcc` wrapper (Debian/Ubuntu
+`musl-tools`) for aws-lc-sys's C part.
 
 No live cluster needed for any of the above - `conflist.rs`'s rendering is pure. Testing the
 watcher (`main.rs`) end-to-end needs a real Kubernetes API server (`kube::Client::try_default()`

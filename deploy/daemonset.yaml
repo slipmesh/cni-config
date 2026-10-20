@@ -6,7 +6,7 @@
 # you want that guarantee end to end.
 #
 # Release CI rewrites whatever tag is here to the release's own before attaching the asset (see
-# .github/workflows/release.yml), so forgetting to bump this line cannot produce an asset pointing
+# .github/workflows/ci.yml), so forgetting to bump this line cannot produce an asset pointing
 # at the wrong image - the bump keeps the in-repo copy honest, CI keeps the released one correct.
 #
 # Deploy it either way: through Talos's `cluster.network.cni: {name: custom, urls: [...]}` at

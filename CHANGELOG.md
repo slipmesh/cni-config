@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.6] - 2026-10-20
+
+### Build system 🛠️
+
+- Bump serde_json to 1.0.154 and tokio to 1.54.0
+
+### CI/CD ⚙️
+
+- Build each arch natively instead of with cargo-zigbuild
+- Test on the shipped musl target and release the image main built
+
+### Fixed 🐛
+
+- Exit on SIGTERM and replace the conflist atomically
+
 ## [0.1.5] - 2026-10-19
 
 ### Added ✨

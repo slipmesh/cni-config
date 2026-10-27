@@ -1,18 +1,5 @@
-# One workflow for checks, image and release, so that what ships is what was tested.
-#
-# Every push and pull request runs fmt and cargo audit, and on each arch's own runner (nothing
-# emulated, nothing cross-compiled) clippy, tests and the release build for the musl target the
-# image ships, followed by the image build itself. musl-tools supplies the `musl-gcc` that
-# aws-lc-sys builds its C part with.
-#
-# A push to main also pushes each arch's image by digest and merges them into a multi-arch
-# manifest tagged `sha-<commit>` - Docker's build-by-digest-then-merge pattern.
-#
-# A `vX.Y.Z` tag builds nothing. It retags the image main already built for the tagged commit as
-# `vX.Y.Z` and `latest`, then creates a GitHub Release carrying deploy/daemonset.yaml - that
-# release-asset URL is what `cluster.network.cni.urls` in Talos machine config points at (a plain
-# HTTP GET on raw YAML, not an OCI pull). Rebuilding at the tag would resolve dependencies afresh
-# (Cargo.lock is not committed) and could ship something other than what main tested.
+# The DaemonSet manifest attached to each release is what `cluster.network.cni.urls` in Talos
+# machine config fetches, over plain HTTP rather than as an OCI pull.
 name: CI
 
 on:
@@ -24,207 +11,42 @@ on:
 permissions:
   contents: read
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-  PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-
 jobs:
-  fmt:
+  rust:
     if: github.ref_type != 'tag'
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v4
+    uses: slipmesh/.github/.github/workflows/rust.yml@v1
+    with:
+      binaries: cni-config
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - run: cargo fmt --all -- --check
-
-  # Separate job so an advisory hit is unambiguous in the PR checks list, rather than buried in
-  # the same log as an unrelated clippy/test failure.
-  security:
+  image:
+    needs: rust
     if: github.ref_type != 'tag'
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      issues: write
-      checks: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: cargo audit
-        run: |
-          cargo install cargo-audit --locked
-          cargo audit
-
-  build:
-    if: github.ref_type != 'tag'
-    runs-on: ${{ matrix.runner }}
+    uses: slipmesh/.github/.github/workflows/image.yml@v1
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [amd64, arm64]
-        include:
-          - arch: amd64
-            rust_target: x86_64-unknown-linux-musl
-            runner: ubuntu-26.04
-          - arch: arm64
-            rust_target: aarch64-unknown-linux-musl
-            runner: ubuntu-26.04-arm
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install the musl toolchain
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
-          components: clippy
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.rust_target }}
-
-      - name: clippy
-        run: cargo clippy --target ${{ matrix.rust_target }} --all-targets --all-features -- -D warnings
-
-      - name: test
-        run: cargo test --target ${{ matrix.rust_target }}
-
-      - name: build
-        run: cargo build --release --target ${{ matrix.rust_target }}
-
-      - name: Stage binary at its TARGETARCH path
-        run: |
-          mkdir -p target/${{ matrix.arch }}/release
-          cp target/${{ matrix.rust_target }}/release/cni-config target/${{ matrix.arch }}/release/
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        if: env.PUBLISH == 'true'
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build the image, and on main push it by digest
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUBLISH }}
-
-      - name: Export digest
-        if: env.PUBLISH == 'true'
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - uses: actions/upload-artifact@v4
-        if: env.PUBLISH == 'true'
-        with:
-          name: digests-${{ matrix.arch }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: true
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push the commit's multi-arch manifest
-        working-directory: /tmp/digests
-        run: |
-          digests=(*)
-          docker buildx imagetools create -t "$IMAGE:sha-${{ github.sha }}" \
-            "${digests[@]/#/$IMAGE@sha256:}"
 
   promote:
     if: github.ref_type == 'tag'
-    runs-on: ubuntu-26.04
+    uses: slipmesh/.github/.github/workflows/promote.yml@v1
     permissions:
       contents: read
       packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # The tag is pushed right after the release merge, often while main's run for that same
-      # commit is still building, so wait for its image rather than fail on the race. A commit
-      # that never went through main never gets one, and the wait ends in an error.
-      - name: Retag the tagged commit's image as the release
-        run: |
-          commit=$(git rev-parse HEAD)
-          source="$IMAGE:sha-$commit"
-          for _ in $(seq 60); do
-            docker buildx imagetools inspect "$source" >/dev/null 2>&1 && break
-            sleep 30
-          done
-          docker buildx imagetools inspect "$source" >/dev/null || {
-            echo "::error::$source does not exist - was ${GITHUB_REF_NAME} tagged on a commit main built?"
-            exit 1
-          }
-          docker buildx imagetools create -t "$IMAGE:${GITHUB_REF_NAME}" -t "$IMAGE:latest" "$source"
+    with:
+      latest: true
 
   release:
     needs: promote
-    runs-on: ubuntu-26.04
+    uses: slipmesh/.github/.github/workflows/release.yml@v1
     permissions:
       contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      # Substitutes whatever tag the in-repo manifest carries, not just a specific one: the point
-      # is that an asset can never advertise an image other than its own release, even if the
-      # in-repo bump was forgotten. The promote job above pushed this exact version tag alongside
-      # `latest`, so the substituted tag always resolves.
-      - name: Pin the manifest's image to this release's tag
-        run: |
-          sed -i "s|\(image: ghcr.io/slipmesh/cni-config\):[^[:space:]]*|\1:${{ github.ref_name }}|" \
-            deploy/daemonset.yaml
-          grep -n 'image:' deploy/daemonset.yaml
-          grep -q "cni-config:${{ github.ref_name }}" deploy/daemonset.yaml
-
-      - name: Create GitHub Release with the DaemonSet manifest attached
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ github.ref_name }}" deploy/daemonset.yaml \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
+      packages: read
+    with:
+      # Substitutes whatever tag the in-repo manifest carries, not just a specific one, so the asset
+      # can never advertise an image other than its own release, even if the in-repo bump was
+      # forgotten. Promote has pushed this exact image tag by now, so the reference resolves.
+      prepare: |
+        sed -i "s|\(image: ghcr.io/slipmesh/cni-config\):[^[:space:]]*|\1:$GITHUB_REF_NAME|" deploy/daemonset.yaml
+        grep -n 'image:' deploy/daemonset.yaml
+        grep -q "cni-config:$GITHUB_REF_NAME" deploy/daemonset.yaml
+      assets: deploy/daemonset.yaml

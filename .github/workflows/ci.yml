@@ -40,7 +40,8 @@ jobs:
       latest-image: true
       # Substitutes whatever tag the in-repo manifest carries, not just a specific one, so the asset
       # can never advertise an image other than its own release, even if the in-repo bump was
-      # forgotten. Promote pushed this exact tag, so the substituted reference always resolves.
+      # forgotten. The release workflow pushes this exact image tag before it runs `prepare`, so
+      # the substituted reference always resolves.
       prepare: |
         sed -i "s|\(image: ghcr.io/slipmesh/cni-config\):[^[:space:]]*|\1:$GITHUB_REF_NAME|" deploy/daemonset.yaml
         grep -n 'image:' deploy/daemonset.yaml

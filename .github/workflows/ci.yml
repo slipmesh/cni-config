@@ -1,9 +1,5 @@
-# Checks, image and release through the organization's shared workflows, so that what ships is
-# what was tested: every push and pull request runs the Rust checks and builds the image, a push
-# to main also publishes it as `sha-<commit>`, and a `vX.Y.Z` tag builds nothing - it retags that
-# image as `vX.Y.Z` and `latest` and creates a GitHub Release carrying deploy/daemonset.yaml. That
-# release-asset URL is what `cluster.network.cni.urls` in Talos machine config points at (a plain
-# HTTP GET on raw YAML, not an OCI pull).
+# The DaemonSet manifest attached to each release is what `cluster.network.cni.urls` in Talos
+# machine config fetches, over plain HTTP rather than as an OCI pull.
 name: CI
 
 on:

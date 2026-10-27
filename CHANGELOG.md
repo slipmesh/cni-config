@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.7] - 2026-10-27
+
+### Build system 🛠️
+
+- Require tokio 1.54.1 (#13)
+
+### CI/CD ⚙️
+
+- Run checks, image and release through the shared workflows (#12)
+
 ## [0.1.6] - 2026-10-20
 
 ### Build system 🛠️

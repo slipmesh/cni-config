@@ -14,39 +14,51 @@ permissions:
 jobs:
   rust:
     if: github.ref_type != 'tag'
-    uses: slipmesh/.github/.github/workflows/rust.yml@v1
+    uses: slipmesh/.github/.github/workflows/rust.yml@feat/release-flow
     with:
       binaries: cni-config
 
   image:
     needs: rust
     if: github.ref_type != 'tag'
-    uses: slipmesh/.github/.github/workflows/image.yml@v1
+    uses: slipmesh/.github/.github/workflows/image.yml@feat/release-flow
     permissions:
       contents: read
       packages: write
 
+  tag:
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: slipmesh/.github/.github/workflows/tag-release.yml@feat/release-flow
+    permissions:
+      contents: write
+
+  # Runs for a release commit tagged above, or for a tag pushed by hand.
   promote:
-    if: github.ref_type == 'tag'
-    uses: slipmesh/.github/.github/workflows/promote.yml@v1
+    needs: tag
+    if: ${{ !cancelled() && (github.ref_type == 'tag' || needs.tag.outputs.tag != '') }}
+    uses: slipmesh/.github/.github/workflows/promote.yml@feat/release-flow
     permissions:
       contents: read
       packages: write
     with:
       latest: true
+      tag: ${{ needs.tag.outputs.tag }}
 
   release:
-    needs: promote
-    uses: slipmesh/.github/.github/workflows/release.yml@v1
+    needs: [tag, promote]
+    if: ${{ !cancelled() && needs.promote.result == 'success' }}
+    uses: slipmesh/.github/.github/workflows/release.yml@feat/release-flow
     permissions:
       contents: write
       packages: read
     with:
+      tag: ${{ needs.tag.outputs.tag }}
       # Substitutes whatever tag the in-repo manifest carries, not just a specific one, so the asset
       # can never advertise an image other than its own release, even if the in-repo bump was
       # forgotten. Promote has pushed this exact image tag by now, so the reference resolves.
       prepare: |
-        sed -i "s|\(image: ghcr.io/slipmesh/cni-config\):[^[:space:]]*|\1:$GITHUB_REF_NAME|" deploy/daemonset.yaml
+        sed -i "s|\(image: ghcr.io/slipmesh/cni-config\):[^[:space:]]*|\1:$RELEASE_TAG|" deploy/daemonset.yaml
         grep -n 'image:' deploy/daemonset.yaml
-        grep -q "cni-config:$GITHUB_REF_NAME" deploy/daemonset.yaml
+        grep -q "cni-config:$RELEASE_TAG" deploy/daemonset.yaml
       assets: deploy/daemonset.yaml

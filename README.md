@@ -54,15 +54,16 @@ the debug output, set the container's `RUST_LOG` to `info,cni_config::memstats=d
 
 ## Release
 
-The release commit, `chore: release vX.Y.Z`, sets `version` in `Cargo.toml` and the image tag in
-`deploy/daemonset.yaml` to the same number and regenerates `CHANGELOG.md` with git-cliff: the binary
+Run the Release PR workflow (Actions, then Release PR). It opens `chore: release vX.Y.Z`, which
+sets `version` in `Cargo.toml` and the image tag in `deploy/daemonset.yaml` to the next version the
+commits since the last tag call for, and regenerates `CHANGELOG.md` with git-cliff: the binary
 reports that version in its first log line, and a tag that moves alone leaves it misnaming itself.
-Then push a `vX.Y.Z` tag on the release merge commit. CI (`.github/workflows/ci.yml`) builds
-nothing for it: every push to `main` already built, tested and pushed a multi-arch image as
-`ghcr.io/slipmesh/cni-config:sha-<commit>`, and the tag retags that image as `:vX.Y.Z` (and
-`:latest`), so the release is the exact image `main` tested. It then rewrites
-`deploy/daemonset.yaml`'s image reference to the tag being released and creates a GitHub Release
-with that manifest attached as a downloadable asset - that release-asset URL is what
+
+Merging that PR releases it. The push to `main` builds, tests and pushes a multi-arch image as
+`ghcr.io/slipmesh/cni-config:sha-<commit>` like every push does, then tags the commit `vX.Y.Z` and
+retags that image as `:vX.Y.Z` and `:latest`, so the release is the exact image `main` tested. It
+then rewrites `deploy/daemonset.yaml`'s image reference to the tag and creates a GitHub Release with
+that manifest attached as a downloadable asset - that release-asset URL is what
 `cluster.network.cni.urls` points at.
 
 ## Local development

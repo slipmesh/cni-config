@@ -66,7 +66,9 @@ then rewrites `deploy/daemonset.yaml`'s image reference to the tag and creates a
 that manifest attached as a downloadable asset - that release-asset URL is what
 `cluster.network.cni.urls` points at.
 
-Every other push and pull request runs only the checks, and `cargo audit` also runs weekly.
+Every other push and pull request runs only the checks, and `cargo audit` also runs weekly. The
+release build waits for every check of its own push, `cargo audit` included; an advisory with no fix
+yet is ignored in `.cargo/audit.toml`, with the reason next to it.
 
 ## Local development
 

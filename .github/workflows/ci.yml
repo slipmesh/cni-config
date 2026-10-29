@@ -20,29 +20,29 @@ permissions:
 
 jobs:
   checks:
-    uses: slipmesh/.github/.github/workflows/rust.yml@v2
+    uses: slipmesh/.github/.github/workflows/rust.yml@ci/release-on-release-commit
 
   release-commit:
     if: github.event_name == 'push'
-    uses: slipmesh/.github/.github/workflows/release-commit.yml@v2
+    uses: slipmesh/.github/.github/workflows/release-commit.yml@ci/release-on-release-commit
 
   build:
     needs: release-commit
     if: needs.release-commit.outputs.version != ''
-    uses: slipmesh/.github/.github/workflows/rust-build.yml@v2
+    uses: slipmesh/.github/.github/workflows/rust-build.yml@ci/release-on-release-commit
     with:
       binaries: cni-config
 
   image:
     needs: build
-    uses: slipmesh/.github/.github/workflows/image.yml@v2
+    uses: slipmesh/.github/.github/workflows/image.yml@ci/release-on-release-commit
     permissions:
       contents: read
       packages: write
 
   tag:
     needs: [release-commit, image]
-    uses: slipmesh/.github/.github/workflows/tag-release.yml@v2
+    uses: slipmesh/.github/.github/workflows/tag-release.yml@ci/release-on-release-commit
     permissions:
       contents: write
     with:
@@ -50,7 +50,7 @@ jobs:
 
   promote:
     needs: [release-commit, tag]
-    uses: slipmesh/.github/.github/workflows/promote.yml@v2
+    uses: slipmesh/.github/.github/workflows/promote.yml@ci/release-on-release-commit
     permissions:
       contents: read
       packages: write
@@ -60,7 +60,7 @@ jobs:
 
   release:
     needs: [release-commit, promote]
-    uses: slipmesh/.github/.github/workflows/release.yml@v2
+    uses: slipmesh/.github/.github/workflows/release.yml@ci/release-on-release-commit
     permissions:
       contents: write
     with:

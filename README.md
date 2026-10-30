@@ -61,9 +61,9 @@ reports that version in its first log line, and a tag that moves alone leaves it
 
 Merging that PR releases it. Only that push builds: it builds the binary, pushes a multi-arch image
 as `ghcr.io/slipmesh/cni-config:sha-<commit>`, then tags the commit `vX.Y.Z` and retags that image
-as `:vX.Y.Z` and, unless it is a pre-release, `:latest`. A build that fails leaves no tag. The run
-then rewrites `deploy/daemonset.yaml`'s image reference to the tag and creates a GitHub Release with
-that manifest attached as a downloadable asset - that release-asset URL is what
+as `:vX.Y.Z` and, when it is the newest stable release, `:latest`. A build that fails leaves no
+tag. The run then rewrites `deploy/daemonset.yaml`'s image reference to the tag and creates a
+GitHub Release with that manifest attached as a downloadable asset - that release-asset URL is what
 `cluster.network.cni.urls` points at.
 
 Every other push and pull request runs only the checks, and `cargo audit` also runs weekly. The

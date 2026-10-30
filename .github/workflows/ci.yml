@@ -20,29 +20,29 @@ permissions:
 
 jobs:
   checks:
-    uses: slipmesh/.github/.github/workflows/rust.yml@v2
+    uses: slipmesh/.github/.github/workflows/rust.yml@v2.1
 
   release-commit:
     if: github.event_name == 'push'
-    uses: slipmesh/.github/.github/workflows/release-commit.yml@v2
+    uses: slipmesh/.github/.github/workflows/release-commit.yml@v2.1
 
   build:
     needs: [release-commit, checks]
     if: needs.release-commit.outputs.version != ''
-    uses: slipmesh/.github/.github/workflows/rust-build.yml@v2
+    uses: slipmesh/.github/.github/workflows/rust-build.yml@v2.1
     with:
       binaries: cni-config
 
   image:
     needs: build
-    uses: slipmesh/.github/.github/workflows/image.yml@v2
+    uses: slipmesh/.github/.github/workflows/image.yml@v2.1
     permissions:
       contents: read
       packages: write
 
   tag:
     needs: [release-commit, image]
-    uses: slipmesh/.github/.github/workflows/tag-release.yml@v2
+    uses: slipmesh/.github/.github/workflows/tag-release.yml@v2.1
     permissions:
       contents: write
     with:
@@ -50,22 +50,22 @@ jobs:
 
   promote:
     needs: [release-commit, tag]
-    uses: slipmesh/.github/.github/workflows/promote.yml@v2
+    uses: slipmesh/.github/.github/workflows/promote.yml@v2.1
     permissions:
       contents: read
       packages: write
     with:
       tag: ${{ needs.release-commit.outputs.version }}
-      latest: ${{ github.ref == 'refs/heads/main' && needs.release-commit.outputs.prerelease != 'true' }}
+      latest: ${{ needs.release-commit.outputs.latest == 'true' }}
 
   release:
     needs: [release-commit, promote]
-    uses: slipmesh/.github/.github/workflows/release.yml@v2
+    uses: slipmesh/.github/.github/workflows/release.yml@v2.1
     permissions:
       contents: write
     with:
       tag: ${{ needs.release-commit.outputs.version }}
-      latest: ${{ github.ref == 'refs/heads/main' && needs.release-commit.outputs.prerelease != 'true' }}
+      latest: ${{ needs.release-commit.outputs.latest == 'true' }}
       prerelease: ${{ needs.release-commit.outputs.prerelease == 'true' }}
       # Substitutes whatever tag the in-repo manifest carries, not just a specific one, so the asset
       # can never advertise an image other than its own release, even if the in-repo bump was

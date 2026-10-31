@@ -82,9 +82,10 @@ CI runs clippy and the tests against the musl target the image ships, on each ar
 `cargo test --target <arch>-unknown-linux-musl` locally needs the `musl-gcc` wrapper (Debian/Ubuntu
 `musl-tools`) for aws-lc-sys's C part.
 
-No live cluster needed for any of the above - `conflist.rs`'s rendering is pure. Testing the
-watcher (`main.rs`) end-to-end needs a real Kubernetes API server (`kube::Client::try_default()`
-uses in-cluster config; point `KUBECONFIG` at a real or kind/k3d cluster to run it standalone).
+No live cluster needed for any of the above - `conflist.rs`'s rendering is pure, and the watcher's
+tests in `main.rs` run it against a local stand-in for the API server. Running the binary itself
+needs a real one: it loads the in-cluster config, or `KUBECONFIG` pointed at a real or kind/k3d
+cluster to run it standalone.
 
 ## License
 

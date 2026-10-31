@@ -1,9 +1,8 @@
 //! Watches this node's own `Node` object and keeps `/etc/cni/net.d/10-bridge.conflist` in sync
 //! with `spec.podCIDRs` - see `conflist.rs`'s module doc comment for the rendering itself. A plain
-//! Kubernetes DaemonSet, not a Talos extension: `podCIDR` only exists once a node has already
-//! joined a running cluster (kube-controller-manager's own `--allocate-node-cidrs` allocation), so
-//! unlike `talos-extensions`' `router`/`awg`/`nftables` (which must work *before* Kubernetes is up)
-//! a live API dependency here is the natural boundary, not a compromise.
+//! Kubernetes DaemonSet rather than something that runs before Kubernetes: `podCIDR` only exists
+//! once a node has joined a running cluster (kube-controller-manager's `--allocate-node-cidrs`),
+//! so a live API dependency is the natural boundary, not a compromise.
 //!
 //! Watches rather than reads once: `Node.spec.podCIDRs` is documented as immutable once set, but
 //! this is a long-lived pod, not a one-shot job, so watching costs nothing and doesn't depend on
@@ -84,12 +83,16 @@ async fn terminated() -> Result<()> {
         .recv()
         .await;
     #[cfg(not(unix))]
-    tokio::signal::ctrl_c().await?;
+    tokio::signal::ctrl_c()
+        .await
+        .context("failed to listen for Ctrl-C")?;
     Ok(())
 }
 
-/// Watches this node's own `Node` object and rewrites the conflist whenever `spec.podCIDRs`
-/// differs from what was last written.
+/// Watches this node's own `Node` object and rewrites the conflist whenever it differs from what
+/// `spec.podCIDRs` renders to. A conflist that cannot be rendered or written ends the process
+/// rather than waiting for the next event, which a quiet Node may not send for minutes: the
+/// kubelet's restart lists the Node again and retries.
 async fn keep_conflist_current(
     nodes: Api<Node>,
     node_name: &str,
@@ -102,7 +105,6 @@ async fn keep_conflist_current(
     let stream = watcher(nodes, config).default_backoff();
     let mut stream = std::pin::pin!(stream);
 
-    let mut last_written: Option<Vec<String>> = None;
     while let Some(event) = stream.next().await {
         memstats::WATCH_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let node = match event {
@@ -119,24 +121,23 @@ async fn keep_conflist_current(
             tracing::debug!(node = node.name_any(), "no spec.podCIDRs yet, waiting");
             continue;
         };
-        if last_written.as_ref() == Some(&pod_cidrs) {
-            continue;
-        }
-
-        match conflist::render_conflist(&pod_cidrs) {
-            Ok(rendered) => match write_conflist(path, &rendered) {
-                Ok(()) => {
-                    tracing::info!(?pod_cidrs, path = %path.display(), "CNI conflist written");
-                    last_written = Some(pod_cidrs);
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, path = %path.display(), "failed to write CNI conflist");
-                }
-            },
-            Err(e) => tracing::error!(error = %e, ?pod_cidrs, "failed to render CNI conflist"),
-        }
+        sync_conflist(path, &pod_cidrs)?;
     }
 
+    Ok(())
+}
+
+/// Writes the conflist `pod_cidrs` render to unless the file already holds exactly that, so a
+/// conflist removed or replaced since is restored on the next event.
+fn sync_conflist(path: &Path, pod_cidrs: &[String]) -> Result<()> {
+    let rendered = conflist::render_conflist(pod_cidrs)
+        .with_context(|| format!("failed to render the CNI conflist for {pod_cidrs:?}"))?;
+    if std::fs::read_to_string(path).is_ok_and(|current| current == rendered) {
+        return Ok(());
+    }
+    write_conflist(path, &rendered)
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    tracing::info!(?pod_cidrs, path = %path.display(), "CNI conflist written");
     Ok(())
 }
 
@@ -170,7 +171,9 @@ mod tests {
         let mut held = Vec::new();
         loop {
             let (mut conn, _) = listener.accept().await.unwrap();
-            let request = read_request(&mut conn).await;
+            let Some(request) = read_request(&mut conn).await else {
+                continue;
+            };
             if unanswered > 0 {
                 unanswered -= 1;
                 held.push(conn);
@@ -203,15 +206,18 @@ mod tests {
         }
     }
 
-    async fn read_request(conn: &mut TcpStream) -> String {
+    /// `None` if the client closes the connection before a whole request arrives.
+    async fn read_request(conn: &mut TcpStream) -> Option<String> {
         let mut request = Vec::new();
         let mut buf = [0; 4096];
         while !request.windows(4).any(|w| w == b"\r\n\r\n") {
-            let n = conn.read(&mut buf).await.unwrap();
-            assert_ne!(n, 0, "client closed the connection mid-request");
+            let n = conn.read(&mut buf).await.ok()?;
+            if n == 0 {
+                return None;
+            }
             request.extend_from_slice(&buf[..n]);
         }
-        String::from_utf8(request).unwrap()
+        Some(String::from_utf8(request).unwrap())
     }
 
     /// Runs `keep_conflist_current` against `serve_api` and returns the conflist once written,
@@ -242,6 +248,23 @@ mod tests {
         .ok();
         watch.abort();
         written
+    }
+
+    #[test]
+    fn restores_a_conflist_removed_since_it_was_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("10-bridge.conflist");
+        sync_conflist(&path, &[POD_CIDR.to_string()]).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        sync_conflist(&path, &[POD_CIDR.to_string()]).unwrap();
+        assert!(path.exists(), "conflist not restored");
+    }
+
+    #[test]
+    fn a_failed_write_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing").join("10-bridge.conflist");
+        assert!(sync_conflist(&path, &[POD_CIDR.to_string()]).is_err());
     }
 
     #[tokio::test]

@@ -1,9 +1,9 @@
 target/
 **/target/
-# The Dockerfile packages a pre-built binary from target/<TARGETARCH>/release/ (staged there from
-# the rust-triple path cargo builds into - see .github/workflows/ci.yml's "Stage binary at its
-# TARGETARCH path" step, or do the equivalent `cp` for a local build) - everything else
-# under target/ is still excluded (build cache, other profiles/targets), just not this final
-# release artifact.
+# The Dockerfile packages a pre-built binary from target/<TARGETARCH>/release/, so that one file
+# stays in the build context while the rest of target/ is excluded. For a local build, stage it
+# from the path cargo builds into, e.g. on x86_64:
+#   mkdir -p target/amd64/release
+#   cp target/x86_64-unknown-linux-musl/release/cni-config target/amd64/release/
 !target/amd64/release/cni-config
 !target/arm64/release/cni-config

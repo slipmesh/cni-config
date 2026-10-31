@@ -1,11 +1,9 @@
-//! Renders the bridge/host-local/loopback CNI conflist for this node's own pod-bridge network.
-//! Ported from `operators/router/src/bird.rs::render_cni_conflist`,
-//! generalized from one IPv4 CIDR to an arbitrary set - exactly what `Node.spec.podCIDRs` can
-//! actually contain (one entry on today's IPv4-only cluster, two once/if dual-stack `podSubnets`
-//! is ever turned on) - so this binary doesn't need rewriting when that happens.
+//! Renders the bridge/host-local/loopback CNI conflist for this node's own pod-bridge network,
+//! from any set of CIDRs `Node.spec.podCIDRs` can hold: one on an IPv4-only cluster, one per
+//! family on a dual-stack one.
 //!
-//! `bridge`/`host-local`/`loopback` are already present in `/opt/cni/bin` on every Talos node
-//! (per Talos's own build Dockerfile), so the conflist is the only piece this binary produces.
+//! `bridge`/`host-local`/`loopback` already ship in `/opt/cni/bin` on every Talos node, so the
+//! conflist is the only piece this binary produces.
 //! `ipMasq: false` because inter-pod/inter-node traffic is routed - the `router` extension
 //! announces this node's podCIDR over the mesh by matching the kernel routing table against a
 //! configured prefix - and never NAT'd:
@@ -16,20 +14,9 @@
 //! sandbox creation with `EEXIST`.
 
 use anyhow::{Context, Result};
-use std::net::IpAddr;
+use ipnet::IpNet;
 
 pub const BRIDGE_IFACE: &str = "cni0";
-
-fn family_of(cidr: &str) -> Result<bool> {
-    let addr = cidr
-        .split('/')
-        .next()
-        .with_context(|| format!("{cidr:?} is not a CIDR"))?;
-    let addr: IpAddr = addr
-        .parse()
-        .with_context(|| format!("{cidr:?} is not a valid CIDR"))?;
-    Ok(addr.is_ipv6())
-}
 
 /// `ranges`: one range-set per address family present in `pod_cidrs`, IPv4 first - the shape
 /// `host-local`'s own IPAM config expects (an array of pools, each itself an array of CIDRs
@@ -40,10 +27,13 @@ pub fn render_conflist(pod_cidrs: &[String]) -> Result<String> {
     let mut v4 = Vec::new();
     let mut v6 = Vec::new();
     for cidr in pod_cidrs {
-        if family_of(cidr)? {
-            v6.push(serde_json::json!({ "subnet": cidr }));
-        } else {
-            v4.push(serde_json::json!({ "subnet": cidr }));
+        let net: IpNet = cidr
+            .parse()
+            .with_context(|| format!("{cidr:?} is not a valid CIDR"))?;
+        let range = serde_json::json!({ "subnet": cidr });
+        match net {
+            IpNet::V4(_) => v4.push(range),
+            IpNet::V6(_) => v6.push(range),
         }
     }
     let mut ranges = Vec::new();
@@ -93,6 +83,16 @@ mod tests {
     #[test]
     fn rejects_an_invalid_cidr() {
         assert!(render_conflist(&["not-a-cidr".to_string()]).is_err());
+    }
+
+    #[test]
+    fn rejects_a_cidr_without_a_valid_prefix() {
+        for cidr in ["10.61.5.0", "10.61.5.0/33", "10.61.5.0/x", "fd00:61::/129"] {
+            assert!(
+                render_conflist(&[cidr.to_string()]).is_err(),
+                "{cidr} accepted"
+            );
+        }
     }
 
     #[test]

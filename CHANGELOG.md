@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.8] - 2026-10-31
+
+### Build system 🛠️
+
+- Commit Cargo.lock (#19)
+
+### CI/CD ⚙️
+
+- Open release PRs from a workflow and release on their merge (#15)
+- Take the release notes from git-cliff through slipmesh/.github@v1.2 (#16)
+- Build only the merged release PR, through the v2 shared workflows (#17)
+- Mark the newest stable release latest, through slipmesh/.github@v2.1 (#18)
+- Promote before tagging, through slipmesh/.github@v2.2 (#22)
+- Call the shared workflows at slipmesh/.github@v2.3 (#23)
+
+### Fixed 🐛
+
+- Recover when the api is unreachable at startup (#24)
+- Restore a removed conflist and restart on a failed write (#25)
+
 ## [0.1.7] - 2026-10-27
 
 ### Build system 🛠️

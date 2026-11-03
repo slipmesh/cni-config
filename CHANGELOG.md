@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.9] - 2026-11-03
+
+### Build system 🛠️
+
+- Move kube to 5 and k8s-openapi to 0.29 (#27)
+- Build k8s-openapi for kubernetes 1.37 (#30)
+
+### CI/CD ⚙️
+
+- Call the shared workflows at slipmesh/.github@v2.4 (#29)
+
+### Miscellaneous 🧹
+
+- Hand dependency updates to renovate (#28)
+
 ## [0.1.8] - 2026-10-31
 
 ### Build system 🛠️

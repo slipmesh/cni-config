@@ -1,6 +1,6 @@
 //! The binary is PID 1 in its pod, where a SIGTERM with no handler installed is dropped and the pod
-//! waits out its grace period. Here it is not PID 1, so a SIGTERM that comes too early kills it
-//! instead: the exit status tells whether the handler was already there.
+//! waits out its grace period. Here it is not PID 1, so a SIGTERM with no handler kills it instead:
+//! the exit status tells whether one was there, during startup and once it watches.
 
 use nix::errno::Errno;
 use nix::fcntl::OFlag;
@@ -8,7 +8,7 @@ use nix::sys::signal::{Signal, kill};
 use nix::sys::stat::Mode;
 use nix::unistd::{Pid, mkfifo};
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -55,6 +55,40 @@ fn a_sigterm_during_startup_ends_the_process_cleanly() {
     let _ = fifo.write_all(KUBECONFIG.as_bytes());
     drop(fifo);
 
+    assert_exits_cleanly(&mut child, deadline);
+}
+
+#[test]
+fn a_sigterm_while_it_watches_ends_the_process_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let kubeconfig = dir.path().join("kubeconfig");
+    std::fs::write(&kubeconfig, KUBECONFIG).unwrap();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cni-config"))
+        .env("NODE_NAME", "node-a")
+        .env("KUBECONFIG", &kubeconfig)
+        .env_remove("KUBERNETES_SERVICE_HOST")
+        .env("RUST_LOG", "info")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+
+    // The API server it points at refuses every connection, so from here on it retries the watch.
+    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let started = stdout
+        .lines()
+        .map_while(Result::ok)
+        .any(|line| line.contains("starting cni-config"));
+    assert!(started, "exited before it started");
+    std::thread::sleep(Duration::from_millis(500));
+    kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    assert_exits_cleanly(&mut child, deadline);
+}
+
+fn assert_exits_cleanly(child: &mut Child, deadline: Instant) {
     let status = loop {
         if let Some(status) = child.try_wait().unwrap() {
             break status;

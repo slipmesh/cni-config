@@ -19,10 +19,13 @@ use futures::StreamExt;
 use k8s_openapi::api::core::v1::Node;
 use kube::runtime::{WatchStreamExt, watcher};
 use kube::{Api, Client, ResourceExt};
-use tokio::signal::unix::{SignalKind, signal};
+use tokio_graceful_shutdown::errors::CancelledByShutdown;
+use tokio_graceful_shutdown::{FutureExt as _, SubsystemBuilder, SubsystemHandle, Toplevel};
 
 const CONFLIST_PATH: &str = "/etc/cni/net.d/10-bridge.conflist";
 const MEMORY_REPORT_PERIOD: Duration = Duration::from_secs(600);
+/// Well inside the kubelet's default grace period of 30 s.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 const API_TIMEOUTS: ApiTimeouts = ApiTimeouts {
     watch_secs: 60,
     read: Duration::from_secs(65),
@@ -33,18 +36,33 @@ static ALLOCATOR: memstats::CountingAllocator = memstats::CountingAllocator;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    sliplib_runtime::init_tracing();
     // As PID 1 in its container the process has no default handler for SIGTERM: one that arrived
-    // before this would be dropped, and the pod would go only when the grace period runs out and
-    // the kubelet sends SIGKILL.
-    let mut terminate =
-        signal(SignalKind::terminate()).context("failed to install the SIGTERM handler")?;
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .without_time()
-        .with_ansi(false)
-        .init();
-    tracing::info!("{} {}", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"));
+    // before `catch_signals` would be dropped, and the pod would go only when the grace period runs
+    // out and the kubelet sends SIGKILL.
+    Toplevel::new(async |s: &mut SubsystemHandle| {
+        s.start(SubsystemBuilder::new("cni-config", run));
+    })
+    .catch_signals()
+    .handle_shutdown_requests(SHUTDOWN_TIMEOUT)
+    .await
+    .map_err(Into::into)
+}
 
+/// The whole error chain as the error's text: the toplevel logs a failed subsystem's error through
+/// `Display`, which for `anyhow` is only the outermost context.
+async fn run(subsys: &mut SubsystemHandle) -> std::result::Result<(), String> {
+    match watch().cancel_on_shutdown(subsys).await {
+        Ok(result) => result.map_err(|e| format!("{e:#}")),
+        Err(CancelledByShutdown) => {
+            tracing::info!("SIGTERM received, exiting");
+            Ok(())
+        }
+    }
+}
+
+async fn watch() -> Result<()> {
+    tracing::info!("{} {}", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"));
     let node_name =
         std::env::var("NODE_NAME").context("NODE_NAME env var must be set (downward API)")?;
     tracing::info!(node_name, "starting cni-config");
@@ -54,14 +72,7 @@ async fn main() -> Result<()> {
         .await
         .context("failed to load the in-cluster Kubernetes config")?;
     let nodes: Api<Node> = Api::all(API_TIMEOUTS.client(config)?);
-
-    tokio::select! {
-        result = keep_conflist_current(nodes, &node_name, &API_TIMEOUTS, Path::new(CONFLIST_PATH)) => result,
-        _ = terminate.recv() => {
-            tracing::info!("SIGTERM received, exiting");
-            Ok(())
-        }
-    }
+    keep_conflist_current(nodes, &node_name, &API_TIMEOUTS, Path::new(CONFLIST_PATH)).await
 }
 
 /// kube sets no response timeout and bounds only an open watch stream, so a list or watch request

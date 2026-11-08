@@ -239,6 +239,7 @@ dependencies = [
  "ipnet",
  "k8s-openapi",
  "kube",
+ "nix",
  "serde_json",
  "tempfile",
  "tokio",

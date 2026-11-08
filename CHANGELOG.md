@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.11] - 2026-11-08
+
+### CI/CD ⚙️
+
+- Check licenses and ship third-party notices through slipmesh/.github@v3.1.0 (#36)
+
+### Changed 🔧
+
+- Stop on sigterm through tokio-graceful-shutdown and log through sliplib-runtime (#37)
+
 ## [0.1.10] - 2026-11-08
 
 ### Build system 🛠️

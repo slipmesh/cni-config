@@ -67,7 +67,9 @@ tag. The run then rewrites `deploy/daemonset.yaml`'s image reference to the tag 
 GitHub Release with that manifest attached as a downloadable asset - that release-asset URL is what
 `cluster.network.cni.urls` points at.
 
-Every other push and pull request runs only the checks, and `cargo audit` also runs weekly. The
+Every other push and pull request runs only the checks, and `cargo audit` also runs weekly. A pull
+request also builds the image from empty placeholders and pushes nothing, so a Dockerfile the
+release build would fail on fails there. The
 release build waits for every check of its own push, `cargo audit` included; an advisory with no fix
 yet is ignored in `.cargo/audit.toml`, with the reason next to it. The `licenses` check holds every
 dependency to the licenses and sources [`deny.toml`](deny.toml) allows.

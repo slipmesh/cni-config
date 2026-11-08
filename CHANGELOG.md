@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.10] - 2026-11-08
+
+### Build system 🛠️
+
+- Update rust crate atomic-write-file to 0.3.1 (main) (#32)
+
+### Fixed 🐛
+
+- Install the sigterm handler before startup (#34)
+
 ## [0.1.9] - 2026-11-03
 
 ### Build system 🛠️

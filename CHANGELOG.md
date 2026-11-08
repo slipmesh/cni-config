@@ -10,6 +10,7 @@ and follows [Semantic Versioning](https://semver.org/).
 ### CI/CD ⚙️
 
 - Check licenses and ship third-party notices through slipmesh/.github@v3.1.0 (#36)
+- Check the image in pull requests and let shared ci add its notices (#40)
 
 ### Changed 🔧
 

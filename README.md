@@ -69,7 +69,8 @@ GitHub Release with that manifest attached as a downloadable asset - that releas
 
 Every other push and pull request runs only the checks, and `cargo audit` also runs weekly. The
 release build waits for every check of its own push, `cargo audit` included; an advisory with no fix
-yet is ignored in `.cargo/audit.toml`, with the reason next to it.
+yet is ignored in `.cargo/audit.toml`, with the reason next to it. The `licenses` check holds every
+dependency to the licenses and sources [`deny.toml`](deny.toml) allows.
 
 ## Local development
 
@@ -79,6 +80,7 @@ Code style, error handling and the lints that enforce them: [`docs/CODESTYLE.md`
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
+cargo deny --locked check licenses bans sources
 ```
 
 CI runs clippy and the tests against the musl target the image ships, on each arch's own runner:
@@ -94,3 +96,10 @@ cluster to run it standalone.
 
 MIT or Apache-2.0, at your option - see [`LICENSE-MIT`](./LICENSE-MIT) and
 [`LICENSE-APACHE`](./LICENSE-APACHE).
+
+The image carries the licenses and notices of what is linked into the binary in
+`/usr/share/licenses/cni-config/`: `THIRD-PARTY-NOTICES` for the crates, rendered with
+[cargo-about](https://embarkstudios.github.io/cargo-about/) from [`about.toml`](about.toml) and
+[`about.hbs`](about.hbs), and `COPYRIGHT-rust-std.html` and `COPYRIGHT-musl` for the Rust standard
+library and the musl libc. Every pull request renders the first, so a dependency under a license
+`about.toml` does not accept fails there.

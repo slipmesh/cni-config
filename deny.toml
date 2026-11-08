@@ -32,3 +32,5 @@ allow-wildcard-paths = true
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+# sliplib is ours and comes from release tags, not crates.io.
+allow-org = { github = ["slipmesh"] }

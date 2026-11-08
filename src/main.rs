@@ -19,6 +19,7 @@ use futures::StreamExt;
 use k8s_openapi::api::core::v1::Node;
 use kube::runtime::{WatchStreamExt, watcher};
 use kube::{Api, Client, ResourceExt};
+use tokio::signal::unix::{SignalKind, signal};
 
 const CONFLIST_PATH: &str = "/etc/cni/net.d/10-bridge.conflist";
 const MEMORY_REPORT_PERIOD: Duration = Duration::from_secs(600);
@@ -32,6 +33,11 @@ static ALLOCATOR: memstats::CountingAllocator = memstats::CountingAllocator;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // As PID 1 in its container the process has no default handler for SIGTERM: one that arrived
+    // before this would be dropped, and the pod would go only when the grace period runs out and
+    // the kubelet sends SIGKILL.
+    let mut terminate =
+        signal(SignalKind::terminate()).context("failed to install the SIGTERM handler")?;
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .without_time()
@@ -51,9 +57,9 @@ async fn main() -> Result<()> {
 
     tokio::select! {
         result = keep_conflist_current(nodes, &node_name, &API_TIMEOUTS, Path::new(CONFLIST_PATH)) => result,
-        result = terminated() => {
+        _ = terminate.recv() => {
             tracing::info!("SIGTERM received, exiting");
-            result
+            Ok(())
         }
     }
 }
@@ -71,22 +77,6 @@ impl ApiTimeouts {
         config.read_timeout = Some(self.read);
         Client::try_from(config).context("failed to build the Kubernetes client")
     }
-}
-
-/// Resolves when the pod is asked to stop. As PID 1 in its container the process has no default
-/// handler for SIGTERM, so without this it would only go when the grace period runs out and the
-/// kubelet sends SIGKILL.
-async fn terminated() -> Result<()> {
-    #[cfg(unix)]
-    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .context("failed to install the SIGTERM handler")?
-        .recv()
-        .await;
-    #[cfg(not(unix))]
-    tokio::signal::ctrl_c()
-        .await
-        .context("failed to listen for Ctrl-C")?;
-    Ok(())
 }
 
 /// Watches this node's own `Node` object and rewrites the conflist whenever it differs from what

@@ -24,5 +24,6 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [dev-dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["fs", "signal"] }
 tempfile = "3.27.0"
 tokio = { version = "1.54.1", features = ["net", "io-util", "time"] }

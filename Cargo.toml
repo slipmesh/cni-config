@@ -5,6 +5,8 @@ edition = "2024"
 authors = ["slipmesh"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/slipmesh/cni-config"
+# Ships as an image, never to crates.io.
+publish = false
 description = "Watches this node's own Node.spec.podCIDRs and writes a bridge/host-local CNI conflist for it"
 
 [[bin]]

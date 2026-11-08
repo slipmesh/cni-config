@@ -1,5 +1,5 @@
-# Packaging only - expects the binary and its license notices already built for the image's
-# arch and staged at target/<TARGETARCH>/release/, as CI does after
+# Packaging only - expects the binary already built for the image's arch and staged at
+# target/<TARGETARCH>/release/, as CI does after
 #   cargo build --release --target <arch>-unknown-linux-musl
 # on a runner of that architecture. Not a `cargo build` inside this Dockerfile: a full rustc
 # build segfaults under QEMU emulation for a non-native --platform.
@@ -16,8 +16,4 @@ FROM scratch
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ARG TARGETARCH
 COPY target/${TARGETARCH}/release/cni-config /cni-config
-COPY target/${TARGETARCH}/release/THIRD-PARTY-NOTICES \
-     target/${TARGETARCH}/release/COPYRIGHT-rust-std.html \
-     target/${TARGETARCH}/release/COPYRIGHT-musl \
-     /usr/share/licenses/cni-config/
 ENTRYPOINT ["/cni-config"]

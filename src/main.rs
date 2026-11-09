@@ -19,8 +19,6 @@ use futures::StreamExt;
 use k8s_openapi::api::core::v1::Node;
 use kube::runtime::{WatchStreamExt, watcher};
 use kube::{Api, Client, ResourceExt};
-use tokio_graceful_shutdown::errors::CancelledByShutdown;
-use tokio_graceful_shutdown::{FutureExt as _, SubsystemBuilder, SubsystemHandle, Toplevel};
 
 const CONFLIST_PATH: &str = "/etc/cni/net.d/10-bridge.conflist";
 const MEMORY_REPORT_PERIOD: Duration = Duration::from_secs(600);
@@ -38,27 +36,18 @@ static ALLOCATOR: memstats::CountingAllocator = memstats::CountingAllocator;
 async fn main() -> Result<()> {
     sliplib_runtime::init_tracing();
     // As PID 1 in its container the process has no default handler for SIGTERM: one that arrived
-    // before `catch_signals` would be dropped, and the pod would go only when the grace period runs
-    // out and the kubelet sends SIGKILL.
-    Toplevel::new(async |s: &mut SubsystemHandle| {
-        s.start(SubsystemBuilder::new("cni-config", run));
-    })
-    .catch_signals()
-    .handle_shutdown_requests(SHUTDOWN_TIMEOUT)
-    .await
-    .map_err(Into::into)
-}
-
-/// The whole error chain as the error's text: the toplevel logs a failed subsystem's error through
-/// `Display`, which for `anyhow` is only the outermost context.
-async fn run(subsys: &mut SubsystemHandle) -> std::result::Result<(), String> {
-    match watch().cancel_on_shutdown(subsys).await {
-        Ok(result) => result.map_err(|e| format!("{e:#}")),
-        Err(CancelledByShutdown) => {
-            tracing::info!("SIGTERM received, exiting");
-            Ok(())
+    // before `serve` installs the handler would be dropped, and the pod would go only when the
+    // grace period runs out and the kubelet sends SIGKILL.
+    sliplib_runtime::serve("cni-config", SHUTDOWN_TIMEOUT, async |shutdown| {
+        tokio::select! {
+            result = watch() => result,
+            () = shutdown.requested() => {
+                tracing::info!("SIGTERM received, exiting");
+                Ok(())
+            }
         }
-    }
+    })
+    .await
 }
 
 async fn watch() -> Result<()> {

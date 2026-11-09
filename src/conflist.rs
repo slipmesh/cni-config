@@ -14,7 +14,7 @@
 //! sandbox creation with `EEXIST`.
 
 use anyhow::{Context, Result};
-use ipnet::IpNet;
+use sliplib_net::IpNet;
 
 pub const BRIDGE_IFACE: &str = "cni0";
 
@@ -27,9 +27,8 @@ pub fn render_conflist(pod_cidrs: &[String]) -> Result<String> {
     let mut v4 = Vec::new();
     let mut v6 = Vec::new();
     for cidr in pod_cidrs {
-        let net: IpNet = cidr
-            .parse()
-            .with_context(|| format!("{cidr:?} is not a valid CIDR"))?;
+        let net =
+            sliplib_net::parse(cidr).with_context(|| format!("{cidr:?} is not a valid CIDR"))?;
         let range = serde_json::json!({ "subnet": cidr });
         match net {
             IpNet::V4(_) => v4.push(range),

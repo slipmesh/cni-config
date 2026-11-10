@@ -22,7 +22,7 @@ kube = { version = "5.0.0", default-features = false, features = ["client", "rus
 serde_json = "1.0.154"
 # Ours, from a release tag: sliplib is not published to crates.io.
 sliplib-net = { git = "https://github.com/slipmesh/sliplib", tag = "v0.6.0" }
-sliplib-runtime = { git = "https://github.com/slipmesh/sliplib", tag = "v0.6.0" }
+sliplib-runtime = { git = "https://github.com/slipmesh/sliplib", tag = "v0.11.0" }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1.44"
 

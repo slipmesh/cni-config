@@ -28,8 +28,9 @@
 ## Logging
 
 `tracing` with structured fields (`tracing::info!(?pod_cidrs, path = %path.display(), "...")`),
-the message a fixed phrase. `info` for state changes, `warn` for retried errors, `debug` for
-the periodic memory report and for waiting states.
+the message a fixed phrase. `info` for state changes, `warn` for retried errors, `error` for
+input the process ignores rather than acts on, `debug` for the periodic memory report and for
+waiting states.
 
 ## Layout
 

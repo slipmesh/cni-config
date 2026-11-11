@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.13] - 2026-11-11
+
+### Added ✨
+
+- Take the pod mtu from the node's mesh mtu annotation (#50)
+
+### Build system 🛠️
+
+- Update rust crate sliplib-net to v0.11.0 (main) (#48)
+- Update rust crate sliplib-runtime to v0.11.0 (main) (#49)
+- Update sliplib-net and sliplib-runtime to v0.12.0 (#51)
+
+### Changed 🔧
+
+- Take cidr parsing from sliplib-net (#47)
+
+### Fixed 🐛
+
+- Log info lines when rust_log is unset (#46)
+
 ## [0.1.12] - 2026-11-09
 
 ### CI/CD ⚙️

@@ -9,6 +9,21 @@ has joined a running cluster), so this is a plain Kubernetes DaemonSet, not a Ta
 The result is the smallest pod network that works: a bridge per node, addresses handed out from
 that node's own podCIDR, and no overlay of its own.
 
+## Pod MTU
+
+The bridge and every pod's interface take the MTU in the Node's `slipmesh.net/mesh_mtu`
+annotation: the one MTU of the node's mesh interfaces, which cross-node pod traffic transits. A
+value that is not an integer from 1280 to 65535 is logged as an error and treated as no
+annotation.
+
+A Node without the annotation is waited on for 10 s after start, since annotations can arrive a
+moment after the Node registers. After that the conflist goes out without `mtu`, so the bridge
+plugin leaves the kernel's default in place, and is rewritten as soon as the annotation appears.
+Removing the annotation drops `mtu` again.
+
+A change reaches new pods only: a running pod keeps the MTU it was created with until it is
+restarted.
+
 ## What it does not do
 
 Cross-node pod-to-pod routing is a separate concern and is not handled here - this repo only ever

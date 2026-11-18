@@ -60,7 +60,6 @@ jobs:
       packages: write
     with:
       tag: ${{ needs.release-commit.outputs.version }}
-      latest: ${{ needs.release-commit.outputs.latest == 'true' }}
 
   tag:
     needs: [release-commit, promote]

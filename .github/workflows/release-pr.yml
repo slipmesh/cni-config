@@ -12,12 +12,13 @@ permissions:
 
 jobs:
   release-pr:
-    uses: slipmesh/.github/.github/workflows/release-pr.yml@v3.2.2
+    uses: slipmesh/.github/.github/workflows/release-pr.yml@v4.0.1
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     with:
       version: ${{ inputs.version }}
       bump: |
         sed -i "s/^version = \".*\"/version = \"$VERSION_NUMBER\"/" Cargo.toml
         sed -i "s|\(image: ghcr.io/slipmesh/cni-config\):v[^[:space:]]*|\1:$VERSION|" deploy/daemonset.yaml
+    secrets:
+      CI_APP_PRIVATE_KEY: ${{ secrets.CI_APP_PRIVATE_KEY }}

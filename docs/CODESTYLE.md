@@ -10,7 +10,8 @@
 
 ## Naming
 
-- Functions say what they do to what: `render_conflist`, `sync_conflist`, `write_conflist`.
+- Functions say what they do to what: `render_conflist`, `sync_conflist`,
+  `keep_conflist_current`.
 - Tests are named for the behaviour they pin, as a sentence: `rejects_an_empty_list`,
   `recovers_from_a_request_the_api_never_answers`.
 - Constants carry their unit or role in the name when the type does not: `MEMORY_REPORT_PERIOD`,
@@ -25,8 +26,8 @@
 - Transient API errors are left to the watcher's backoff, counted, and logged at `warn`.
 - `unwrap`/`expect` only in tests.
 - A type read from input has no `serde(flatten)`, `untagged` or internal `tag`: serde reads them
-  through a buffer, and the refusal loses its key and line. Each type is parsed from the input on
-  its own.
+  through a buffer, and the refusal loses its key and line. Where one input holds several types'
+  keys, each type is parsed from the input on its own.
 
 ## Logging
 

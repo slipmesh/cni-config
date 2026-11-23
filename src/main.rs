@@ -169,7 +169,9 @@ fn mesh_mtu(node: &Node) -> Option<u32> {
         tracing::error!(
             annotation = MESH_MTU_ANNOTATION,
             value,
-            "annotation is not an MTU from 1280 to 65535, ignored"
+            min = MESH_MTU_RANGE.start(),
+            max = MESH_MTU_RANGE.end(),
+            "annotation is not an MTU in range, ignored"
         );
     }
     mtu
@@ -180,13 +182,16 @@ fn mesh_mtu(node: &Node) -> Option<u32> {
 fn sync_conflist(path: &Path, pod_cidrs: &[String], mtu: Option<u32>) -> Result<()> {
     let rendered = conflist::render_conflist(pod_cidrs, mtu)
         .with_context(|| format!("failed to render the CNI conflist for {pod_cidrs:?}"))?;
-    // Written through a temporary file beside it, which the CRI's loader skips: a kill mid-write
-    // leaves the previous file whole.
-    if sliplib_fs::write_if_changed(path, &rendered)? {
+    // The CRI's loader skips the temporary file, so a kill mid-write leaves the previous file
+    // whole.
+    if sliplib_fs::write_if_changed(path, &rendered)
+        .with_context(|| format!("failed to write the CNI conflist to {}", path.display()))?
+    {
         tracing::info!(?pod_cidrs, ?mtu, path = %path.display(), "CNI conflist written");
     }
     Ok(())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,12 +413,12 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_write_is_an_error() {
+    fn a_conflist_whose_directory_is_missing_is_refused_and_creates_none() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("file");
-        std::fs::write(&file, "").unwrap();
-        let path = file.join("10-bridge.conflist");
+        let missing = dir.path().join("missing");
+        let path = missing.join("10-bridge.conflist");
         assert!(sync_conflist(&path, &[POD_CIDR.to_string()], None).is_err());
+        assert!(!missing.exists());
     }
 
     #[tokio::test]

@@ -263,12 +263,12 @@ name = "cni-config"
 version = "0.1.13"
 dependencies = [
  "anyhow",
- "atomic-write-file",
  "futures",
  "k8s-openapi",
  "kube",
  "nix 0.32.0",
  "serde_json",
+ "sliplib-fs",
  "sliplib-net",
  "sliplib-runtime",
  "tempfile",
@@ -1738,17 +1738,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
+name = "sliplib-fs"
+version = "0.22.0"
+source = "git+https://github.com/slipmesh/sliplib?tag=v0.22.0#880442b88a4c72674da3750126cc9ee790f15fa4"
+dependencies = [
+ "atomic-write-file",
+ "thiserror",
+]
+
+[[package]]
 name = "sliplib-net"
-version = "0.19.0"
-source = "git+https://github.com/slipmesh/sliplib?tag=v0.19.0#a8ebdea9b82a084f6cac5f9a3d97a055807d78a8"
+version = "0.22.0"
+source = "git+https://github.com/slipmesh/sliplib?tag=v0.22.0#880442b88a4c72674da3750126cc9ee790f15fa4"
 dependencies = [
  "ipnet",
 ]
 
 [[package]]
 name = "sliplib-runtime"
-version = "0.19.0"
-source = "git+https://github.com/slipmesh/sliplib?tag=v0.19.0#a8ebdea9b82a084f6cac5f9a3d97a055807d78a8"
+version = "0.22.0"
+source = "git+https://github.com/slipmesh/sliplib?tag=v0.22.0#880442b88a4c72674da3750126cc9ee790f15fa4"
 dependencies = [
  "anyhow",
  "tokio-graceful-shutdown",

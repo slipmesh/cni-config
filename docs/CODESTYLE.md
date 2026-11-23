@@ -24,6 +24,9 @@
   so the kubelet restarts the pod. Errors are not logged and then dropped.
 - Transient API errors are left to the watcher's backoff, counted, and logged at `warn`.
 - `unwrap`/`expect` only in tests.
+- A type read from input has no `serde(flatten)`, `untagged` or internal `tag`: serde reads them
+  through a buffer, and the refusal loses its key and line. Each type is parsed from the input on
+  its own.
 
 ## Logging
 

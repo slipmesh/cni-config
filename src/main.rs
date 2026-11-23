@@ -20,20 +20,19 @@ use futures::StreamExt;
 use k8s_openapi::api::core::v1::Node;
 use kube::runtime::{WatchStreamExt, watcher};
 use kube::{Api, Client, ResourceExt};
+use sliplib_net::mtu::{MESH_MTU_ANNOTATION, MIN_IPV6_MTU};
 
 const CONFLIST_PATH: &str = "/etc/cni/net.d/10-bridge.conflist";
 const MEMORY_REPORT_PERIOD: Duration = Duration::from_secs(600);
 /// Well inside the kubelet's default grace period of 30 s.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
-/// The one MTU of every mesh interface on this node, which cross-node pod traffic transits.
-const MESH_MTU_ANNOTATION: &str = "slipmesh.net/mesh_mtu";
 /// How long after start a Node without the annotation is waited on before the conflist goes out
 /// without an MTU: Talos sets annotations a moment after the Node registers, and a pod created in
 /// between would keep the default MTU for its whole life.
 const MESH_MTU_GRACE: Duration = Duration::from_secs(10);
-/// IPv6 needs at least 1280 on every link; a veth takes at most 65535 (`ETH_MAX_MTU`), and the
-/// bridge plugin fails every pod sandbox on anything above.
-const MESH_MTU_RANGE: std::ops::RangeInclusive<u32> = 1280..=65535;
+/// A veth takes at most 65535 (`ETH_MAX_MTU`), and the bridge plugin fails every pod sandbox on
+/// anything above.
+const MESH_MTU_RANGE: std::ops::RangeInclusive<u32> = MIN_IPV6_MTU..=65535;
 const API_TIMEOUTS: ApiTimeouts = ApiTimeouts {
     watch_secs: 60,
     read: Duration::from_secs(65),
@@ -181,23 +180,12 @@ fn mesh_mtu(node: &Node) -> Option<u32> {
 fn sync_conflist(path: &Path, pod_cidrs: &[String], mtu: Option<u32>) -> Result<()> {
     let rendered = conflist::render_conflist(pod_cidrs, mtu)
         .with_context(|| format!("failed to render the CNI conflist for {pod_cidrs:?}"))?;
-    if std::fs::read_to_string(path).is_ok_and(|current| current == rendered) {
-        return Ok(());
+    // Written through a temporary file beside it, which the CRI's loader skips: a kill mid-write
+    // leaves the previous file whole.
+    if sliplib_fs::write_if_changed(path, &rendered)? {
+        tracing::info!(?pod_cidrs, ?mtu, path = %path.display(), "CNI conflist written");
     }
-    write_conflist(path, &rendered)
-        .with_context(|| format!("failed to write {}", path.display()))?;
-    tracing::info!(?pod_cidrs, ?mtu, path = %path.display(), "CNI conflist written");
     Ok(())
-}
-
-/// Replaces the conflist through a temporary file in the same directory, so a kill mid-write
-/// leaves the previous file whole rather than a truncated one the CRI would fail to parse. The
-/// temporary file is named `.10-bridge.conflist.<random>`, which the CRI's loader skips.
-fn write_conflist(path: &Path, rendered: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut file = atomic_write_file::AtomicWriteFile::open(path)?;
-    file.write_all(rendered.as_bytes())?;
-    file.commit()
 }
 #[cfg(test)]
 mod tests {
@@ -422,7 +410,9 @@ mod tests {
     #[test]
     fn a_failed_write_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("missing").join("10-bridge.conflist");
+        let file = dir.path().join("file");
+        std::fs::write(&file, "").unwrap();
+        let path = file.join("10-bridge.conflist");
         assert!(sync_conflist(&path, &[POD_CIDR.to_string()], None).is_err());
     }
 

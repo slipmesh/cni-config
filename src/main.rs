@@ -392,6 +392,13 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_conflist_whose_directory_is_missing_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing").join("10-bridge.conflist");
+        assert!(sync_conflist(&path, &[POD_CIDR.to_string()], None).is_err());
+    }
+
     #[tokio::test]
     async fn writes_the_conflist_with_the_mesh_mtu_from_the_initial_list() {
         let watch = Watch::start(0, node(1, Some("1432")), vec![]).await;

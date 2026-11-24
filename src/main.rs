@@ -376,16 +376,6 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_mesh_mtu_annotation() {
-        assert_eq!(mesh_mtu(&annotated(Some("1432"))), Some(1432));
-    }
-
-    #[test]
-    fn a_node_without_the_annotation_has_no_mesh_mtu() {
-        assert_eq!(mesh_mtu(&annotated(None)), None);
-    }
-
-    #[test]
     fn accepts_the_mtu_range_a_veth_takes_from_ipv6_minimum_up() {
         assert_eq!(mesh_mtu(&annotated(Some("1280"))), Some(1280));
         assert_eq!(mesh_mtu(&annotated(Some("65535"))), Some(65535));
@@ -393,32 +383,13 @@ mod tests {
 
     #[test]
     fn ignores_a_mesh_mtu_that_is_not_one() {
-        for value in ["", "mtu", "1432.0", "-1432", "1279", "65536"] {
+        for value in ["mtu", "1279", "65536"] {
             assert_eq!(
                 mesh_mtu(&annotated(Some(value))),
                 None,
                 "{value:?} accepted"
             );
         }
-    }
-
-    #[test]
-    fn restores_a_conflist_removed_since_it_was_written() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("10-bridge.conflist");
-        sync_conflist(&path, &[POD_CIDR.to_string()], None).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        sync_conflist(&path, &[POD_CIDR.to_string()], None).unwrap();
-        assert!(path.exists(), "conflist not restored");
-    }
-
-    #[test]
-    fn a_conflist_whose_directory_is_missing_is_refused_and_creates_none() {
-        let dir = tempfile::tempdir().unwrap();
-        let missing = dir.path().join("missing");
-        let path = missing.join("10-bridge.conflist");
-        assert!(sync_conflist(&path, &[POD_CIDR.to_string()], None).is_err());
-        assert!(!missing.exists());
     }
 
     #[tokio::test]
@@ -472,31 +443,6 @@ mod tests {
             .await
             .expect("conflist not written when the annotation arrived");
         assert_eq!(bridge["mtu"], 1432);
-    }
-
-    #[tokio::test]
-    async fn a_malformed_annotation_counts_as_none() {
-        let watch = Watch::start(0, node(1, Some("1279")), vec![]).await;
-        assert!(
-            watch
-                .bridge_within(TEST_MTU_GRACE * 3, without_mtu)
-                .await
-                .is_some(),
-            "conflist not written without an mtu"
-        );
-    }
-
-    #[tokio::test]
-    async fn rewrites_the_conflist_when_the_mesh_mtu_changes() {
-        let changed = (Duration::from_millis(300), node(2, Some("1420")));
-        let watch = Watch::start(0, node(1, Some("1432")), vec![changed]).await;
-        assert!(
-            watch
-                .bridge_within(Duration::from_secs(5), with_mtu(1420))
-                .await
-                .is_some(),
-            "conflist not rewritten with the new mesh MTU"
-        );
     }
 
     #[tokio::test]

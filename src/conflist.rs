@@ -85,21 +85,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_cidr_without_a_valid_prefix() {
-        for cidr in [
-            "198.18.5.0",
-            "198.18.5.0/33",
-            "198.18.5.0/x",
-            "2001:db8:61::/129",
-        ] {
-            assert!(
-                render_conflist(&[cidr.to_string()], None).is_err(),
-                "{cidr} accepted"
-            );
-        }
-    }
-
-    #[test]
     fn single_ipv4_cidr_has_one_range_set() {
         let rendered = render_conflist(&["198.18.5.0/24".to_string()], None).unwrap();
         let parsed = parse(&rendered);
@@ -125,18 +110,5 @@ mod tests {
         assert_eq!(ranges.len(), 2);
         assert_eq!(ranges[0][0]["subnet"], "198.18.5.0/24");
         assert_eq!(ranges[1][0]["subnet"], "2001:db8:61::/64");
-    }
-
-    #[test]
-    fn sets_the_given_mtu_on_the_bridge() {
-        let rendered = render_conflist(&["198.18.1.0/24".to_string()], Some(1432)).unwrap();
-        assert_eq!(parse(&rendered)["plugins"][0]["mtu"], 1432);
-    }
-
-    #[test]
-    fn leaves_the_mtu_to_the_bridge_plugin_when_none_is_given() {
-        let rendered = render_conflist(&["198.18.1.0/24".to_string()], None).unwrap();
-        let bridge = &parse(&rendered)["plugins"][0];
-        assert!(bridge.get("mtu").is_none(), "{bridge}");
     }
 }

@@ -13,7 +13,7 @@
 - Functions say what they do to what: `render_conflist`, `sync_conflist`,
   `keep_conflist_current`.
 - Tests are named for the behaviour they pin, as a sentence: `rejects_an_empty_list`,
-  `recovers_from_a_request_the_api_never_answers`.
+  `a_conflist_whose_directory_is_missing_is_refused`.
 - Constants carry their unit or role in the name when the type does not: `MEMORY_REPORT_PERIOD`,
   `watch_secs`.
 

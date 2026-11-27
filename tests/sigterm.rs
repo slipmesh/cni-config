@@ -79,7 +79,7 @@ fn a_sigterm_while_it_watches_ends_the_process_cleanly() {
     let started = stdout
         .lines()
         .map_while(Result::ok)
-        .any(|line| line.contains("starting cni-config"));
+        .any(|line| line.contains(r#"starting name="cni-config""#));
     assert!(started, "exited before it started");
     std::thread::sleep(Duration::from_millis(500));
     kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM).unwrap();

@@ -18,8 +18,9 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use k8s_openapi::api::core::v1::Node;
-use kube::runtime::{WatchStreamExt, watcher};
-use kube::{Api, Client, ResourceExt};
+use kube::runtime::watcher;
+use kube::{Api, ResourceExt};
+use sliplib_kube::ApiTimeouts;
 use sliplib_net::mtu::{MESH_MTU_ANNOTATION, MIN_IPV6_MTU};
 
 const CONFLIST_PATH: &str = "/etc/cni/net.d/10-bridge.conflist";
@@ -44,55 +45,33 @@ static ALLOCATOR: memstats::CountingAllocator = memstats::CountingAllocator;
 #[tokio::main]
 async fn main() -> Result<()> {
     sliplib_runtime::init_tracing();
+    tracing::info!("{} {}", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"));
     // As PID 1 in its container the process has no default handler for SIGTERM: one that arrived
     // before `serve` installs the handler would be dropped, and the pod would go only when the
     // grace period runs out and the kubelet sends SIGKILL.
-    sliplib_runtime::serve("cni-config", SHUTDOWN_TIMEOUT, async |shutdown| {
-        tokio::select! {
-            result = watch() => result,
-            () = shutdown.requested() => {
-                tracing::info!("SIGTERM received, exiting");
-                Ok(())
+    sliplib_kube::run(
+        "cni-config",
+        SHUTDOWN_TIMEOUT,
+        API_TIMEOUTS,
+        |agent, shutdown| async move {
+            tokio::spawn(memstats::report_every(MEMORY_REPORT_PERIOD));
+            let nodes: Api<Node> = Api::all(agent.client);
+            tokio::select! {
+                result = keep_conflist_current(
+                    nodes,
+                    &agent.node,
+                    &API_TIMEOUTS,
+                    MESH_MTU_GRACE,
+                    Path::new(CONFLIST_PATH),
+                ) => result,
+                () = shutdown.requested() => {
+                    tracing::info!("SIGTERM received, exiting");
+                    Ok(())
+                }
             }
-        }
-    })
-    .await
-}
-
-async fn watch() -> Result<()> {
-    tracing::info!("{} {}", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"));
-    let node_name =
-        std::env::var("NODE_NAME").context("NODE_NAME env var must be set (downward API)")?;
-    tracing::info!(node_name, "starting cni-config");
-    tokio::spawn(memstats::report_every(MEMORY_REPORT_PERIOD));
-
-    let config = kube::Config::infer()
-        .await
-        .context("failed to load the in-cluster Kubernetes config")?;
-    let nodes: Api<Node> = Api::all(API_TIMEOUTS.client(config)?);
-    keep_conflist_current(
-        nodes,
-        &node_name,
-        &API_TIMEOUTS,
-        MESH_MTU_GRACE,
-        Path::new(CONFLIST_PATH),
+        },
     )
     .await
-}
-
-/// kube sets no response timeout and bounds only an open watch stream, so a list or watch request
-/// the API server accepted but never answers would hold the watcher forever. `read` has to outlast
-/// `watch_secs`, the server-side lifetime of a watch, or every quiet watch would be cut as dead.
-struct ApiTimeouts {
-    watch_secs: u32,
-    read: Duration,
-}
-
-impl ApiTimeouts {
-    fn client(&self, mut config: kube::Config) -> Result<Client> {
-        config.read_timeout = Some(self.read);
-        Client::try_from(config).context("failed to build the Kubernetes client")
-    }
 }
 
 /// Watches this node's own `Node` object and rewrites the conflist whenever it differs from what
@@ -107,10 +86,7 @@ async fn keep_conflist_current(
     mtu_grace: Duration,
     path: &Path,
 ) -> Result<()> {
-    let config = watcher::Config::default()
-        .fields(&format!("metadata.name={node_name}"))
-        .timeout(timeouts.watch_secs);
-    let stream = watcher(nodes, config).default_backoff();
+    let stream = sliplib_kube::watch_one(nodes, node_name, timeouts);
     let mut stream = std::pin::pin!(stream);
     let grace = tokio::time::sleep(mtu_grace);
     let mut grace = std::pin::pin!(grace);
@@ -195,8 +171,7 @@ fn sync_conflist(path: &Path, pod_cidrs: &[String], mtu: Option<u32>) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpListener, TcpStream};
+    use sliplib_kube::testing::FakeApi;
 
     const NODE_NAME: &str = "node-a";
     const POD_CIDR: &str = "198.18.1.0/24";
@@ -206,89 +181,19 @@ mod tests {
     };
     const TEST_MTU_GRACE: Duration = Duration::from_secs(2);
 
-    /// This node at `resource_version`, carrying `mesh_mtu` as its annotation if given.
+    /// This node at `resource_version`, with its pod CIDR, carrying `mesh_mtu` as its annotation
+    /// if given.
     fn node(resource_version: u32, mesh_mtu: Option<&str>) -> serde_json::Value {
-        let mut metadata = serde_json::json!({
-            "name": NODE_NAME,
-            "resourceVersion": resource_version.to_string(),
-        });
-        if let Some(mtu) = mesh_mtu {
-            metadata["annotations"] = serde_json::json!({ (MESH_MTU_ANNOTATION): mtu });
-        }
-        serde_json::json!({
-            "apiVersion": "v1",
-            "kind": "Node",
-            "metadata": metadata,
-            "spec": {"podCIDRs": [POD_CIDR]},
-        })
+        let annotations: Vec<_> = mesh_mtu
+            .map(|mtu| (MESH_MTU_ANNOTATION, mtu))
+            .into_iter()
+            .collect();
+        let mut node = sliplib_kube::testing::node(NODE_NAME, resource_version, &annotations);
+        node["spec"] = serde_json::json!({"podCIDRs": [POD_CIDR]});
+        node
     }
 
-    /// A Kubernetes API stand-in. It answers the watcher's list with `listed`, sends `changes` as
-    /// `MODIFIED` events on the first watch, each after its delay, and holds every watch open after
-    /// that. The first `unanswered` connections are accepted and read but never answered, the way
-    /// an API server going down mid-request leaves them.
-    async fn serve_api(
-        listener: TcpListener,
-        mut unanswered: usize,
-        listed: serde_json::Value,
-        mut changes: Vec<(Duration, serde_json::Value)>,
-    ) {
-        let mut held = Vec::new();
-        loop {
-            let (mut conn, _) = listener.accept().await.unwrap();
-            let Some(request) = read_request(&mut conn).await else {
-                continue;
-            };
-            if unanswered > 0 {
-                unanswered -= 1;
-                held.push(conn);
-                continue;
-            }
-            if request.contains("watch=true") {
-                conn.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\r\n")
-                    .await
-                    .unwrap();
-                for (delay, change) in changes.drain(..) {
-                    tokio::time::sleep(delay).await;
-                    let event = serde_json::json!({"type": "MODIFIED", "object": change})
-                        .to_string()
-                        + "\n";
-                    let chunk = format!("{:x}\r\n{event}\r\n", event.len());
-                    conn.write_all(chunk.as_bytes()).await.unwrap();
-                }
-                held.push(conn);
-                continue;
-            }
-            let body = serde_json::json!({
-                "apiVersion": "v1",
-                "kind": "NodeList",
-                "metadata": {"resourceVersion": listed["metadata"]["resourceVersion"]},
-                "items": [listed],
-            })
-            .to_string();
-            let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            conn.write_all(response.as_bytes()).await.unwrap();
-        }
-    }
-
-    /// `None` if the client closes the connection before a whole request arrives.
-    async fn read_request(conn: &mut TcpStream) -> Option<String> {
-        let mut request = Vec::new();
-        let mut buf = [0; 4096];
-        while !request.windows(4).any(|w| w == b"\r\n\r\n") {
-            let n = conn.read(&mut buf).await.ok()?;
-            if n == 0 {
-                return None;
-            }
-            request.extend_from_slice(&buf[..n]);
-        }
-        Some(String::from_utf8(request).unwrap())
-    }
-
-    /// `keep_conflist_current` running against `serve_api`, and the conflist it keeps.
+    /// `keep_conflist_current` running against a `FakeApi`, and the conflist it keeps.
     struct Watch {
         task: tokio::task::JoinHandle<Result<()>>,
         path: std::path::PathBuf,
@@ -297,16 +202,11 @@ mod tests {
 
     impl Watch {
         async fn start(
-            unanswered: usize,
             listed: serde_json::Value,
             changes: Vec<(Duration, serde_json::Value)>,
         ) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let url = format!("http://{}", listener.local_addr().unwrap());
-            tokio::spawn(serve_api(listener, unanswered, listed, changes));
-
-            let config = kube::Config::new(url.parse().unwrap());
-            let nodes: Api<Node> = Api::all(TEST_TIMEOUTS.client(config).unwrap());
+            let api = FakeApi::start(0, listed, changes).await;
+            let nodes: Api<Node> = Api::all(TEST_TIMEOUTS.client(api.config()).unwrap());
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("10-bridge.conflist");
             let watch_path = path.clone();
@@ -401,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn writes_the_conflist_with_the_mesh_mtu_from_the_initial_list() {
-        let watch = Watch::start(0, node(1, Some("1432")), vec![]).await;
+        let watch = Watch::start(node(1, Some("1432")), vec![]).await;
         let bridge = watch
             .bridge_within(TEST_MTU_GRACE / 2, any_conflist)
             .await
@@ -411,20 +311,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recovers_from_a_request_the_api_never_answers() {
-        let watch = Watch::start(1, node(1, Some("1432")), vec![]).await;
-        assert!(
-            watch
-                .bridge_within(Duration::from_secs(10), with_mtu(1432))
-                .await
-                .is_some(),
-            "conflist not written once the API answers"
-        );
-    }
-
-    #[tokio::test]
     async fn waits_out_the_grace_period_for_the_annotation_then_writes_without_an_mtu() {
-        let watch = Watch::start(0, node(1, None), vec![]).await;
+        let watch = Watch::start(node(1, None), vec![]).await;
         assert!(
             watch
                 .bridge_within(TEST_MTU_GRACE / 2, any_conflist)
@@ -444,7 +332,7 @@ mod tests {
     #[tokio::test]
     async fn an_annotation_arriving_within_the_grace_period_is_written_at_once() {
         let soon = TEST_MTU_GRACE / 4;
-        let watch = Watch::start(0, node(1, None), vec![(soon, node(2, Some("1432")))]).await;
+        let watch = Watch::start(node(1, None), vec![(soon, node(2, Some("1432")))]).await;
         let bridge = watch
             .bridge_within(TEST_MTU_GRACE, any_conflist)
             .await
@@ -457,7 +345,7 @@ mod tests {
         // Two steps, each inside the client's read timeout, which would cut a quiet watch.
         let step = TEST_MTU_GRACE * 3 / 4;
         let changes = vec![(step, node(2, Some("1432"))), (step, node(3, None))];
-        let watch = Watch::start(0, node(1, Some("1432")), changes).await;
+        let watch = Watch::start(node(1, Some("1432")), changes).await;
         assert!(
             watch
                 .bridge_within(TEST_MTU_GRACE, with_mtu(1432))
